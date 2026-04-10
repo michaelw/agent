@@ -286,7 +286,7 @@ func TestResolvedConfigSerializesConcurrentDiscovery(t *testing.T) {
 	}
 }
 
-func TestCreateSessionUsesIDTokenClaims(t *testing.T) {
+func TestCreateSessionOmitsOAuthTokens(t *testing.T) {
 	idToken := createTestIDToken(t, map[string]any{
 		"sub":            "user-123",
 		"email":          "user@example.com",
@@ -365,16 +365,16 @@ func TestCreateSessionUsesIDTokenClaims(t *testing.T) {
 		t.Fatal("expected expiry to be set")
 	}
 
-	if session.Token == "" {
-		t.Fatal("expected id token to be preserved")
+	if session.Token != "" {
+		t.Fatalf("expected id token to be omitted, got %q", session.Token)
 	}
 
-	if session.AccessToken == "" {
-		t.Fatal("expected access token to be preserved")
+	if session.AccessToken != "" {
+		t.Fatalf("expected access token to be omitted, got %q", session.AccessToken)
 	}
 
-	if session.RefreshToken == "" {
-		t.Fatal("expected refresh token to be preserved")
+	if session.RefreshToken != "" {
+		t.Fatalf("expected refresh token to be omitted, got %q", session.RefreshToken)
 	}
 }
 
@@ -491,6 +491,10 @@ func TestCreateSessionUsesDiscoveredTokenAndUserInfo(t *testing.T) {
 	if session.User.Email != "oidc@example.com" {
 		t.Fatalf("expected userinfo email, got %q", session.User.Email)
 	}
+	if session.Token != "" || session.AccessToken != "" || session.RefreshToken != "" {
+		t.Fatal("expected OAuth tokens to be omitted from stored session")
+	}
+
 	mu.Lock()
 	gotPaths := append([]string(nil), requestPaths...)
 	mu.Unlock()
