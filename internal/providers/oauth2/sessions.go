@@ -113,7 +113,7 @@ func (p *oauth2Provider) CreateSession(ctx context.Context, authRequest *models.
 		"user_name":  user.Name,
 	}).Debug("Adding OAuth2 user identity to provider")
 
-	p.AddIdentities(models.Identity{
+	p.upsertOAuth2Identity(models.Identity{
 		ID:    user.ID,
 		Label: user.Name,
 		User:  user,
@@ -317,4 +317,41 @@ func (p *oauth2Provider) ValidateSession(ctx context.Context, session *models.Se
 
 func (p *oauth2Provider) RenewSession(ctx context.Context, session *models.Session) (*models.Session, error) {
 	return session, nil
+}
+
+func (p *oauth2Provider) upsertOAuth2Identity(identity models.Identity) {
+	if identity.User == nil {
+		return
+	}
+
+	p.BaseProvider.UpsertIdentitiesWithKey(
+		[]models.Identity{identity},
+		oauth2IdentityKeys,
+		func(target *models.Identity, incoming models.Identity) {
+			target.ID = incoming.ID
+			target.Label = incoming.Label
+
+			if incoming.User == nil {
+				return
+			}
+			userCopy := *incoming.User
+			if len(incoming.User.Groups) > 0 {
+				userCopy.Groups = append([]string(nil), incoming.User.Groups...)
+			}
+			target.User = &userCopy
+		},
+	)
+}
+
+func oauth2IdentityKeys(identity models.Identity) []string {
+	var keys []string
+	if identity.User != nil {
+		if identity.User.ID != "" {
+			keys = append(keys, identity.User.ID)
+		}
+		if identity.User.Email != "" {
+			keys = append(keys, identity.User.Email)
+		}
+	}
+	return keys
 }
