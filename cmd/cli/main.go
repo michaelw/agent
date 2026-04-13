@@ -77,6 +77,43 @@ func preRunAgentConfigE(cmd *cobra.Command, args []string) error {
 	return preRunConfigE(cmd, config.ModeAgent)
 }
 
+func initializeAgentMode(
+	cfg *config.Config,
+	reloadConfig func() error,
+	syncWithLoginServer func() error,
+	initializeProviders func() error,
+) error {
+	err := reloadConfig()
+	if err != nil {
+		logrus.WithError(err).Errorln("Failed to load local configuration for agent mode")
+		return err
+	}
+
+	loginServerConfigured := cfg.GetLoginServerUrl() != common.DefaultLoginServerEndpoint
+	hasLocalTemporalConfig := cfg.Services.Temporal != nil
+
+	if loginServerConfigured {
+		err = syncWithLoginServer()
+		if err == nil {
+			return nil
+		}
+
+		if hasLocalTemporalConfig {
+			logrus.WithError(err).Warn("Failed to sync agent configuration with login server, continuing with local Temporal configuration")
+		} else {
+			return fmt.Errorf("failed to sync agent configuration with login server and no local Temporal configuration is available: %w", err)
+		}
+	}
+
+	err = initializeProviders()
+	if err != nil {
+		logrus.WithError(err).Errorln("Failed to initialize providers")
+		return err
+	}
+
+	return nil
+}
+
 func preRunConfigE(cmd *cobra.Command, mode config.Mode) error {
 	// Load configuration before any command runs
 	var err error
@@ -119,20 +156,12 @@ func preRunConfigE(cmd *cobra.Command, mode config.Mode) error {
 		sessionManager = loadUserSessionState(cfg.GetLoginServerHostname())
 
 	case config.ModeAgent:
-
-		err = cfg.ReloadConfig()
-		if err != nil {
-			logrus.WithError(err).Errorln("Failed to load local configuration for agent mode")
-			return err
-		}
-
-		// Initialize providers
-		err = cfg.InitializeProviders()
-
-		if err != nil {
-			logrus.WithError(err).Errorln("Failed to initialize providers")
-			return err
-		}
+		return initializeAgentMode(
+			cfg,
+			cfg.ReloadConfig,
+			cfg.SyncWithLoginServer,
+			cfg.InitializeProviders,
+		)
 
 	case config.ModeServer:
 
