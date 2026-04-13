@@ -35,14 +35,12 @@ func (p *oauth2Provider) getResolvedConfig(ctx context.Context) (*resolvedOAuth2
 		return p.resolvedConfig, nil
 	}
 	p.resolvedConfigMu.RUnlock()
-
 	p.resolvedConfigMu.Lock()
 	defer p.resolvedConfigMu.Unlock()
 
 	if p.resolvedConfig != nil {
 		return p.resolvedConfig, nil
 	}
-
 	schema := &ConfigSchema{}
 	if err := schema.Unmarshal(p.GetConfig()); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal OAuth2 config: %w", err)
@@ -59,7 +57,6 @@ func (p *oauth2Provider) getResolvedConfig(ctx context.Context) (*resolvedOAuth2
 		TokenURL:      schema.TokenURL,
 		UserInfoURL:   schema.UserInfoURL,
 	}
-
 	needsDiscovery := strings.TrimSpace(resolved.AuthURL) == "" ||
 		strings.TrimSpace(resolved.TokenURL) == "" ||
 		strings.TrimSpace(resolved.UserInfoURL) == ""
@@ -70,7 +67,6 @@ func (p *oauth2Provider) getResolvedConfig(ctx context.Context) (*resolvedOAuth2
 		if err != nil {
 			return nil, err
 		}
-
 		if strings.TrimSpace(resolved.AuthURL) == "" {
 			resolved.AuthURL = document.AuthorizationEndpoint
 		}
@@ -88,7 +84,6 @@ func (p *oauth2Provider) getResolvedConfig(ctx context.Context) (*resolvedOAuth2
 	if strings.TrimSpace(resolved.TokenURL) == "" {
 		return nil, fmt.Errorf("OAuth2 config resolution failed: token endpoint is empty")
 	}
-
 	p.resolvedConfig = resolved
 	return p.resolvedConfig, nil
 }
