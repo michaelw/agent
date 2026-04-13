@@ -60,6 +60,14 @@ func (t *AuthorizeTask) HasNotifiers() bool {
 	return len(t.Notifiers) > 0
 }
 
+func (t *thandTask) resolveIdentitySnapshot(identityID string) *models.Identity {
+	identity, err := t.config.GetIdentity(identityID)
+	if err != nil {
+		return nil
+	}
+	return identity
+}
+
 func (t *thandTask) executeAuthorizeTask(
 	workflowTask *models.ElevateWorkflowTask,
 	taskName string,
@@ -169,13 +177,21 @@ func (t *thandTask) executeAuthorization(
 			}
 
 			for _, tenantId := range elevateRequest.Tenants {
+				requestMetadata := make(map[string]any, len(elevateRequest.Metadata)+1)
+				for key, value := range elevateRequest.Metadata {
+					requestMetadata[key] = value
+				}
+				requestMetadata["grant_id"] = workflowTask.GetWorkflowID()
+				resolvedIdentity := t.resolveIdentitySnapshot(identityId)
 
 				authReq := models.WorkflowRoleRequest{
-					WorkflowID: workflowTask.GetWorkflowID(),
-					Identity:   identityId,
-					Role:       elevateRequest.Role,
-					Duration:   &duration,
-					Tenant:     tenantId,
+					WorkflowID:       workflowTask.GetWorkflowID(),
+					Identity:         identityId,
+					ResolvedIdentity: resolvedIdentity,
+					Role:             elevateRequest.Role,
+					Duration:         &duration,
+					Tenant:           tenantId,
+					Metadata:         requestMetadata,
 				}
 
 				authTasks = append(authTasks, authTask{
@@ -237,14 +253,19 @@ func (t *thandTask) executeAuthorization(
 		}
 		// Create a non-composite role from the workflow's base role definition
 		// The role will be resolved properly by the provider if needed
+		requestIdentity := &models.Identity{ID: req.AuthRequest.Identity}
+		if req.AuthRequest.ResolvedIdentity != nil {
+			requestIdentity = req.AuthRequest.ResolvedIdentity
+		}
 		requests[req.Identity] = &models.AuthorizeRoleRequest{
-			Identity: &models.Identity{ID: req.AuthRequest.Identity},
+			Identity: requestIdentity,
 			Tenant:   &models.ProviderTenant{ID: req.AuthRequest.Tenant},
 			Role: &models.CompositeRole{
 				Role:      *req.AuthRequest.Role,
 				Composite: false, // Explicitly set - this is a base role from workflow
 			},
 			Duration: dur,
+			Metadata: req.AuthRequest.Metadata,
 		}
 	}
 
@@ -314,6 +335,14 @@ func (t *thandTask) runAuthTask(
 			),
 			TaskQueue: workflowTask.GetTaskQueue(),
 		}
+		logrus.WithFields(logrus.Fields{
+			"provider":          task.ProviderName,
+			"workflow":          wfName,
+			"workflow_id":       workflowTask.GetWorkflowID(),
+			"identity":          task.Identity,
+			"task_queue":        workflowTask.GetTaskQueue(),
+			"task_queue_source": "agent-task",
+		}).Info("Dispatching provider authorize child workflow")
 		ctx = workflow.WithChildOptions(ctx, childOpts)
 
 		req := task.AuthRequest

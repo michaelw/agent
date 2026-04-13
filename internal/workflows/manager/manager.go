@@ -8,6 +8,7 @@ import (
 	"time"
 
 	swctx "github.com/serverlessworkflow/sdk-go/v3/impl/ctx"
+	"github.com/serverlessworkflow/sdk-go/v3/model"
 	"github.com/sirupsen/logrus"
 	"github.com/thand-io/agent/internal/common"
 	models "github.com/thand-io/agent/internal/models"
@@ -16,6 +17,7 @@ import (
 	providerGcp "github.com/thand-io/agent/internal/workflows/functions/providers/gcp"
 	providerSlack "github.com/thand-io/agent/internal/workflows/functions/providers/slack"
 	providerThand "github.com/thand-io/agent/internal/workflows/functions/providers/thand"
+	taskModel "github.com/thand-io/agent/internal/workflows/tasks/model"
 	taskThand "github.com/thand-io/agent/internal/workflows/tasks/providers/thand"
 	sdkConstants "github.com/thand-io/agent/sdk/constants"
 	sdkWorkflowsConfig "github.com/thand-io/agent/sdk/workflows/config"
@@ -90,6 +92,13 @@ func NewThandWorkflowManager(cfg models.ConfigImpl) (*ThandWorkflowManager, erro
 		if err != nil {
 			logrus.WithError(err).Error("Failed to register thand workflows")
 			return nil, fmt.Errorf("failed to register thand workflows: %w", err)
+		}
+
+		if binder, ok := cfg.(interface{ EnsureProviderTemporalBindings() error }); ok {
+			if err := binder.EnsureProviderTemporalBindings(); err != nil {
+				logrus.WithError(err).Error("Failed to register provider Temporal bindings")
+				return nil, fmt.Errorf("failed to register provider Temporal bindings: %w", err)
+			}
 		}
 	}
 
@@ -209,6 +218,9 @@ func (m *ThandWorkflowManager) executeElevationWorkflow(
 		"request_workflow": request.Workflow,
 		"request_reason":   request.Reason,
 		"request_duration": request.Duration,
+		"target_agent":     request.Metadata["target_agent"],
+		"metadata":         request.Metadata,
+		"workflow_tasks":   summarizeTaskList(workflowDsl.Do),
 	}).Info("Starting workflow execution")
 
 	authProvider, foundAuthProvider := m.config.GetProviderByName(request.Authenticator)
@@ -290,6 +302,32 @@ func (m *ThandWorkflowManager) executeElevationWorkflow(
 		Url:  sessionResponse.Url,
 	}, nil
 
+}
+
+func summarizeTaskList(taskList *model.TaskList) []map[string]any {
+	if taskList == nil {
+		return nil
+	}
+
+	summary := make([]map[string]any, 0, len(*taskList))
+	for _, item := range *taskList {
+		if item == nil || item.Task == nil {
+			continue
+		}
+
+		entry := map[string]any{
+			"name": item.Key,
+			"type": fmt.Sprintf("%T", item.Task),
+		}
+
+		if thandTask, ok := item.Task.(*taskModel.ThandTask); ok {
+			entry["thand_type"] = thandTask.Thand
+		}
+
+		summary = append(summary, entry)
+	}
+
+	return summary
 }
 
 func (m *ThandWorkflowManager) ResumeWorkflow(

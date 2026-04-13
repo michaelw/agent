@@ -49,6 +49,15 @@ func (m *mockRunner) ResumeWorkflow(wf *models.ElevateWorkflowTask) (*models.Ele
 // ConfigImpl methods; SetMode controls the IsServer() result.
 func newTestService(serverMode bool, runner *mockRunner) *Service {
 	cfg := config.DefaultConfig()
+	cfg.GetEnvironmentConfig().Platform = models.Local
+	cfg.GetEnvironmentConfig().Name = "test-host"
+	cfg.Providers.Definitions = map[string]models.ProviderConfig{
+		"local-elevation": {
+			Name:     "Local Elevation",
+			Provider: "local",
+			Enabled:  true,
+		},
+	}
 	if serverMode {
 		cfg.SetMode(config.ModeServer)
 	} else {
@@ -165,6 +174,53 @@ func TestElevate_UserNonNil_SessionPopulated(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, runner.lastElevReq.Session, "session must be populated from the authenticated user")
+}
+
+func TestElevate_LocalSudoRequiresExplicitTargetAgent(t *testing.T) {
+	runner := &mockRunner{}
+	svc := newTestService(true, runner)
+
+	_, err := svc.Elevate(context.Background(), ElevationInput{
+		Request: models.ElevateRequest{
+			Workflow: models.LocalSudoTimedWorkflowName,
+			Role: &models.Role{
+				Identifier: models.LocalSudoRoleIdentifier,
+				Name:       "Local Sudo",
+			},
+			Providers: []string{"local-elevation"},
+			Reason:    "Routine maintenance",
+			Duration:  "30m",
+		},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "explicit target agent")
+}
+
+func TestElevate_LocalSudoPreservesExplicitTargetAgent(t *testing.T) {
+	runner := &mockRunner{}
+	svc := newTestService(true, runner)
+
+	_, err := svc.Elevate(context.Background(), ElevationInput{
+		Request: models.ElevateRequest{
+			Workflow: models.LocalSudoTimedWorkflowName,
+			Role: &models.Role{
+				Identifier: models.LocalSudoRoleIdentifier,
+				Name:       "Local Sudo",
+			},
+			Providers: []string{"local-elevation"},
+			Reason:    "Routine maintenance",
+			Duration:  "30m",
+			Metadata: map[string]any{
+				"mode":         string(models.LocalSudoModeTimed),
+				"target_agent": "thand_local_other_host",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, runner.lastElevReq.Metadata)
+	assert.Equal(t, "thand_local_other_host", runner.lastElevReq.Metadata["target_agent"])
 }
 
 func TestElevate_RunnerError(t *testing.T) {

@@ -120,6 +120,12 @@ func preRunConfigE(cmd *cobra.Command, mode config.Mode) error {
 
 	case config.ModeAgent:
 
+		err = cfg.ReloadConfig()
+		if err != nil {
+			logrus.WithError(err).Errorln("Failed to load local configuration for agent mode")
+			return err
+		}
+
 		// Initialize providers
 		err = cfg.InitializeProviders()
 

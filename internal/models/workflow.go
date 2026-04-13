@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/hashicorp/go-version"
@@ -145,7 +146,6 @@ func (w *Workflow) GetWorkflowClone() *model.Workflow {
 		return nil
 	}
 
-	// Deep copy via JSON marshaling
 	data, err := json.Marshal(w.Workflow)
 	if err != nil {
 		logrus.WithError(err).Errorln("Failed to marshal workflow for cloning")
@@ -157,7 +157,213 @@ func (w *Workflow) GetWorkflowClone() *model.Workflow {
 		logrus.WithError(err).Errorln("Failed to unmarshal workflow for cloning")
 		return nil
 	}
+
+	clonedTasks, err := cloneTaskList(w.Workflow.Do)
+	if err != nil {
+		logrus.WithError(err).Errorln("Failed to clone workflow tasks")
+		return nil
+	}
+	clone.Do = clonedTasks
+
 	return clone
+}
+
+func cloneTaskList(taskList *model.TaskList) (*model.TaskList, error) {
+	if taskList == nil {
+		return nil, nil
+	}
+
+	cloned := make(model.TaskList, 0, len(*taskList))
+	for _, item := range *taskList {
+		clonedItem, err := cloneTaskItem(item)
+		if err != nil {
+			return nil, err
+		}
+		cloned = append(cloned, clonedItem)
+	}
+
+	return &cloned, nil
+}
+
+func cloneTaskItem(item *model.TaskItem) (*model.TaskItem, error) {
+	if item == nil {
+		return nil, nil
+	}
+	if item.Task == nil {
+		return &model.TaskItem{Key: item.Key}, nil
+	}
+
+	clonedTask, err := cloneTask(item.Task)
+	if err != nil {
+		return nil, fmt.Errorf("clone task %q: %w", item.Key, err)
+	}
+
+	return &model.TaskItem{
+		Key:  item.Key,
+		Task: clonedTask,
+	}, nil
+}
+
+func cloneTask(task model.Task) (model.Task, error) {
+	taskType := reflect.TypeOf(task)
+	if taskType == nil {
+		return nil, fmt.Errorf("task type is nil")
+	}
+
+	taskValue := reflect.New(taskType.Elem()).Interface()
+	clonedTask, ok := taskValue.(model.Task)
+	if !ok {
+		return nil, fmt.Errorf("cloned task does not implement model.Task: %T", taskValue)
+	}
+
+	data, err := json.Marshal(task)
+	if err != nil {
+		return nil, fmt.Errorf("marshal task: %w", err)
+	}
+	if err := json.Unmarshal(data, clonedTask); err != nil {
+		return nil, fmt.Errorf("unmarshal task: %w", err)
+	}
+
+	switch original := task.(type) {
+	case *model.DoTask:
+		clonedTask.(*model.DoTask).Do, err = cloneTaskList(original.Do)
+	case *model.ForTask:
+		clonedTask.(*model.ForTask).Do, err = cloneTaskList(original.Do)
+	case *model.TryTask:
+		clonedTry := clonedTask.(*model.TryTask)
+		clonedTry.Try, err = cloneTaskList(original.Try)
+		if err == nil && original.Catch != nil {
+			if clonedTry.Catch == nil {
+				clonedTry.Catch = &model.TryTaskCatch{}
+			}
+			clonedTry.Catch.Do, err = cloneTaskList(original.Catch.Do)
+		}
+	case *model.ForkTask:
+		clonedTask.(*model.ForkTask).Fork.Branches, err = cloneTaskList(original.Fork.Branches)
+	default:
+		err = cloneTaskNestedFields(reflect.ValueOf(task), reflect.ValueOf(clonedTask))
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return clonedTask, nil
+}
+
+func cloneTaskNestedFields(original reflect.Value, cloned reflect.Value) error {
+	if !original.IsValid() || !cloned.IsValid() {
+		return nil
+	}
+	if original.Kind() == reflect.Pointer {
+		if original.IsNil() || cloned.IsNil() {
+			return nil
+		}
+		return cloneTaskNestedFields(original.Elem(), cloned.Elem())
+	}
+	if original.Kind() != reflect.Struct || cloned.Kind() != reflect.Struct {
+		return nil
+	}
+
+	if err := cloneTaskListField(original, cloned, "Do"); err != nil {
+		return err
+	}
+	if err := cloneTaskListField(original, cloned, "Try"); err != nil {
+		return err
+	}
+	if err := cloneForkBranchesField(original, cloned); err != nil {
+		return err
+	}
+	if err := cloneCatchDoField(original, cloned); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func cloneTaskListField(original reflect.Value, cloned reflect.Value, fieldName string) error {
+	originalField := original.FieldByName(fieldName)
+	clonedField := cloned.FieldByName(fieldName)
+	if !originalField.IsValid() || !clonedField.IsValid() || !clonedField.CanSet() {
+		return nil
+	}
+	if originalField.Type() != reflect.TypeOf((*model.TaskList)(nil)) {
+		return nil
+	}
+
+	if originalField.IsNil() {
+		clonedField.Set(reflect.Zero(clonedField.Type()))
+		return nil
+	}
+
+	clonedTaskList, err := cloneTaskList(originalField.Interface().(*model.TaskList))
+	if err != nil {
+		return err
+	}
+	clonedField.Set(reflect.ValueOf(clonedTaskList))
+	return nil
+}
+
+func cloneForkBranchesField(original reflect.Value, cloned reflect.Value) error {
+	originalFork := original.FieldByName("Fork")
+	clonedFork := cloned.FieldByName("Fork")
+	if !originalFork.IsValid() || !clonedFork.IsValid() {
+		return nil
+	}
+
+	originalBranches := originalFork.FieldByName("Branches")
+	clonedBranches := clonedFork.FieldByName("Branches")
+	if !originalBranches.IsValid() || !clonedBranches.IsValid() || !clonedBranches.CanSet() {
+		return nil
+	}
+	if originalBranches.Type() != reflect.TypeOf((*model.TaskList)(nil)) {
+		return nil
+	}
+
+	if originalBranches.IsNil() {
+		clonedBranches.Set(reflect.Zero(clonedBranches.Type()))
+		return nil
+	}
+
+	clonedTaskList, err := cloneTaskList(originalBranches.Interface().(*model.TaskList))
+	if err != nil {
+		return err
+	}
+	clonedBranches.Set(reflect.ValueOf(clonedTaskList))
+	return nil
+}
+
+func cloneCatchDoField(original reflect.Value, cloned reflect.Value) error {
+	originalCatch := original.FieldByName("Catch")
+	clonedCatch := cloned.FieldByName("Catch")
+	if !originalCatch.IsValid() || !clonedCatch.IsValid() {
+		return nil
+	}
+	if originalCatch.IsNil() {
+		return nil
+	}
+	if clonedCatch.IsNil() {
+		clonedCatch.Set(reflect.New(clonedCatch.Type().Elem()))
+	}
+
+	originalDo := originalCatch.Elem().FieldByName("Do")
+	clonedDo := clonedCatch.Elem().FieldByName("Do")
+	if !originalDo.IsValid() || !clonedDo.IsValid() || !clonedDo.CanSet() {
+		return nil
+	}
+	if originalDo.Type() != reflect.TypeOf((*model.TaskList)(nil)) {
+		return nil
+	}
+	if originalDo.IsNil() {
+		clonedDo.Set(reflect.Zero(clonedDo.Type()))
+		return nil
+	}
+
+	clonedTaskList, err := cloneTaskList(originalDo.Interface().(*model.TaskList))
+	if err != nil {
+		return err
+	}
+	clonedDo.Set(reflect.ValueOf(clonedTaskList))
+	return nil
 }
 
 func (w *Workflow) GetEnabled() bool {

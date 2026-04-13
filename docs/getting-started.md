@@ -167,8 +167,74 @@ gcloud projects list
 Request temporary sudo access on your local machine:
 
 ```bash
-thand-agent request sudo --duration 30m --reason "System maintenance"
+thand request sudo --duration 30m --reason "System maintenance"
+
+# Or broker a single privileged command
+thand request sudo --reason "Inspect listening ports" -- netstat -ab
 ```
+
+Local sudo is handled by the `local-elevation` provider on the target agent.
+For Unix targets, the agent chooses the local account in this order:
+
+1. `providers.local-elevation.config.username`
+2. `req.Identity.User.Username`, but only when the identity carries at least one
+   trusted provider ID in `Identity.Providers`
+
+Identity-username fallback is disabled by default. To enable it for a specific
+provider instance, trust that provider ID explicitly:
+
+```yaml
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      trusted_username_sources:
+        - oauth2-jumpcloud
+```
+
+If you want to pin the local account regardless of the authenticated identity,
+set it directly:
+
+```yaml
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      username: localadmin
+```
+
+You can also add explicit safety policy:
+
+```yaml
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      trusted_username_sources:
+        - oauth2-jumpcloud
+      denied_usernames:
+        - root
+        - daemon
+        - nobody
+      allowed_uid_ranges:
+        - "1000-60000"
+```
+
+Notes:
+- `trusted_username_sources` matches provider IDs, not provider types. For an identity
+  like `{"oauth2-jumpcloud":"oauth2"}`, the trusted value is `oauth2-jumpcloud`.
+- If `trusted_username_sources` is unset or empty, identity-username fallback is
+  disabled and the agent will only use `config.username`.
+- Browser/server local sudo requests require an explicit target agent string.
+  CLI `thand request sudo` still defaults to the local environment target when
+  `--target` is omitted.
+- If `allowed_uid_ranges` is omitted, Unix agents try `/etc/login.defs` first
+  using `UID_MIN` and `UID_MAX`, then fall back to conservative defaults.
+- If trust or account validation fails, the sudo request fails closed and no
+  sudoers fragment is written.
 
 ## Next Steps
 
