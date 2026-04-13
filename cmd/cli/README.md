@@ -79,6 +79,24 @@ thand request access --provider <provider> --role <role> --duration <duration> -
 thand request access --provider aws-prod --role admin --duration 4h --reason "Database maintenance required"
 ```
 
+#### `thand request sudo`
+Request time-bound local sudo access or broker a single privileged command.
+
+**Usage:**
+```bash
+thand request sudo --duration 30m --reason "System maintenance"
+thand request sudo --reason "Inspect listening ports" -- netstat -ab
+```
+
+**Options:**
+- `--duration`, `-d` - Required for timed local sudo access
+- `--reason`, `-e` - Reason for the sudo request
+
+**Notes:**
+- On macOS and Linux, timed access uses a managed sudoers grant that is revoked by the workflow.
+- On macOS and Linux, command mode brokers the command immediately and revokes the grant afterwards.
+- On Windows, v1 supports brokered commands through Windows Sudo only; timed sudo requests are not supported.
+
 ### Session Management
 
 #### `thand sessions`

@@ -55,6 +55,14 @@ func (s *Service) Elevate(ctx context.Context, input ElevationInput) (*models.Wo
 	}
 
 	request := input.Request
+	if err := models.NormalizeLocalSudoRequest(
+		&request,
+		nil,
+		s.cfg.GetEnvironmentConfig(),
+		models.LocalSudoNormalizeOptions{RequireTarget: true},
+	); err != nil {
+		return nil, err
+	}
 
 	if input.User != nil {
 		exportableSession := &models.ExportableSession{

@@ -70,6 +70,10 @@ type Config struct {
 
 	// Provider instances
 	providerInstances map[string]models.Provider
+
+	// Tracks provider Temporal workflow/activity registration for the current
+	// Temporal client lifecycle so repeated ensure passes stay idempotent.
+	registeredTemporalProviderBindings map[string]struct{}
 }
 
 func (c *Config) GetSecret() string {

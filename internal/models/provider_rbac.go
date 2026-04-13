@@ -19,6 +19,7 @@ type AuthorizeRoleRequest struct {
 	Identity *Identity       `json:"identity,omitempty"` // User or group identifier
 	Role     *CompositeRole  `json:"role,omitempty"`
 	Duration *time.Duration  `json:"duration,omitempty"` // Optional duration for temporary access
+	Metadata map[string]any  `json:"metadata,omitempty"` // Provider-specific request metadata
 }
 
 func (r *AuthorizeRoleRequest) IsValid() bool {

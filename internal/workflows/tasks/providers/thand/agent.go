@@ -2,6 +2,7 @@ package thand
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/thand-io/agent/internal/models"
@@ -17,6 +18,7 @@ const ThandAgentTask = "agent"
 type agentBranchResult struct {
 	identity string
 	result   any
+	context  map[string]any
 	err      error
 }
 
@@ -41,36 +43,57 @@ func (t *thandTask) executeAgentTask(
 	}
 
 	// Extract identities from the interpolated with config
-	identities, err := t.parseIdentities(call)
+	identities, err := t.parseIdentities(workflowTask, call)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(identities) == 0 {
-		log.Warn("No identities provided for agent task, returning nil")
-		return nil, nil
+		return nil, fmt.Errorf("agent task did not resolve any identities")
 	}
 
-	log.WithField("identities", identities).Info("Executing agent task for identities")
+	log.WithFields(logrus.Fields{
+		"identities":         identities,
+		"current_task_queue": workflowTask.GetTaskQueue(),
+	}).Info("Executing agent task for identities")
 
 	return t.executeAgentTemporal(workflowTask, taskName, call, identities, input)
 }
 
 // parseIdentities extracts the identities list from the task's With config.
-func (t *thandTask) parseIdentities(call *taskModel.ThandTask) ([]string, error) {
+func (t *thandTask) parseIdentities(workflowTask *models.ElevateWorkflowTask, call *taskModel.ThandTask) ([]string, error) {
 
-	if call.With == nil {
-		return nil, fmt.Errorf("agent task requires 'with.identities'")
+	var raw any
+	if call.With != nil {
+		raw = (*call.With)["identities"]
 	}
 
-	raw, ok := (*call.With)["identities"]
-	if !ok {
-		return nil, fmt.Errorf("agent task requires 'with.identities'")
+	identities, err := normalizeAgentIdentities(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(identities) > 0 {
+		return identities, nil
 	}
 
+	elevateRequest, err := workflowTask.GetContextAsElevationRequest()
+	if err != nil {
+		return nil, fmt.Errorf("agent task requires 'with.identities' or request metadata target_agent: %w", err)
+	}
+
+	targetAgent, _ := elevateRequest.Metadata["target_agent"].(string)
+	targetAgent = strings.TrimSpace(targetAgent)
+	if len(targetAgent) == 0 {
+		return nil, fmt.Errorf("agent task requires 'with.identities' or request metadata target_agent")
+	}
+
+	return []string{targetAgent}, nil
+}
+
+func normalizeAgentIdentities(raw any) ([]string, error) {
 	switch v := raw.(type) {
 	case []string:
-		return v, nil
+		return trimIdentities(v)
 	case []any:
 		identities := make([]string, 0, len(v))
 		for _, item := range v {
@@ -80,12 +103,29 @@ func (t *thandTask) parseIdentities(call *taskModel.ThandTask) ([]string, error)
 			}
 			identities = append(identities, s)
 		}
-		return identities, nil
+		return trimIdentities(identities)
 	case string:
-		return []string{v}, nil
+		return trimIdentities([]string{v})
+	case nil:
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("identities must be a string or list of strings, got %T", raw)
 	}
+}
+
+func trimIdentities(values []string) ([]string, error) {
+	identities := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if len(value) == 0 {
+			continue
+		}
+		identities = append(identities, value)
+	}
+	if len(identities) == 0 {
+		return nil, nil
+	}
+	return identities, nil
 }
 
 // executeAgentTemporal runs the do task list for each identity in parallel using Temporal coroutines.
@@ -125,6 +165,14 @@ func (t *thandTask) executeAgentTemporal(
 			childWF.SetTaskQueue(identity)
 			childWF = childWF.WithTemporalContext(gCtx)
 
+			logrus.WithFields(logrus.Fields{
+				"identity":          identity,
+				"parent_task_queue": workflowTask.GetTaskQueue(),
+				"target_task_queue": identity,
+				"workflow_id":       workflowTask.GetWorkflowID(),
+				"agent_branch_task": taskName,
+			}).Info("Dispatching agent task branch to target queue")
+
 			// Create a runner for this branch
 			branchRunner := runner.NewResumableWorkflowRunner(
 				t.workflowConfig.CreateRunner(childWF),
@@ -136,6 +184,7 @@ func (t *thandTask) executeAgentTemporal(
 			resultCh.Send(gCtx, agentBranchResult{
 				identity: identity,
 				result:   out,
+				context:  childWF.GetContextAsMap(),
 				err:      err,
 			})
 		})
@@ -159,6 +208,7 @@ func (t *thandTask) executeAgentTemporal(
 			continue
 		}
 
+		mergeAgentBranchContext(workflowTask, result.context)
 		results[result.identity] = result.result
 	}
 
@@ -187,4 +237,39 @@ func (t *thandTask) executeAgentTemporal(
 	return map[string]any{
 		taskName: results,
 	}, nil
+}
+
+func mergeAgentBranchContext(workflowTask *models.ElevateWorkflowTask, branchContext map[string]any) {
+	if len(branchContext) == 0 {
+		return
+	}
+
+	parentContext := workflowTask.GetContextAsMap()
+	if len(parentContext) == 0 {
+		parentContext = map[string]any{}
+	}
+
+	for key, value := range branchContext {
+		parentContext[key] = mergeAgentContextValue(parentContext[key], value)
+	}
+
+	workflowTask.SetInstanceCtx(parentContext)
+}
+
+func mergeAgentContextValue(existing any, incoming any) any {
+	existingMap, existingOK := existing.(map[string]any)
+	incomingMap, incomingOK := incoming.(map[string]any)
+	if !existingOK || !incomingOK {
+		return incoming
+	}
+
+	merged := make(map[string]any, len(existingMap)+len(incomingMap))
+	for key, value := range existingMap {
+		merged[key] = value
+	}
+	for key, value := range incomingMap {
+		merged[key] = mergeAgentContextValue(merged[key], value)
+	}
+
+	return merged
 }

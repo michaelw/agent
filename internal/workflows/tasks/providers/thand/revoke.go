@@ -141,14 +141,16 @@ func (t *thandTask) executeRevocationTask(
 			}
 
 			for _, tenantID := range tenantsToProcess {
+				resolvedIdentity := t.resolveIdentitySnapshot(identityId)
 
 				revokeReq := models.WorkflowRevokeRoleRequest{
 					RevokeRoleRequest: &models.WorkflowRoleRequest{
-						WorkflowID: workflowTask.GetWorkflowID(),
-						Identity:   identityId,
-						Role:       elevateRequest.Role,
-						Duration:   &duration,
-						Tenant:     tenantID,
+						WorkflowID:       workflowTask.GetWorkflowID(),
+						Identity:         identityId,
+						ResolvedIdentity: resolvedIdentity,
+						Role:             elevateRequest.Role,
+						Duration:         &duration,
+						Tenant:           tenantID,
 					},
 					AuthorizeRoleResponse: authorizeResponse,
 				}
@@ -254,6 +256,14 @@ func (t *thandTask) runRevokeTask(
 			),
 			TaskQueue: workflowTask.GetTaskQueue(),
 		}
+		logrus.WithFields(logrus.Fields{
+			"provider":          task.ProviderName,
+			"workflow":          wfName,
+			"workflow_id":       workflowTask.GetWorkflowID(),
+			"identity":          task.Identity,
+			"task_queue":        workflowTask.GetTaskQueue(),
+			"task_queue_source": "agent-task",
+		}).Info("Dispatching provider revoke child workflow")
 		ctx = workflow.WithChildOptions(ctx, childOpts)
 
 		req := task.RevokeReq

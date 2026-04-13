@@ -17,6 +17,7 @@ type ElevateStaticRequest struct {
 	Role       string   `json:"role" form:"role"`
 	Provider   string   `json:"provider" form:"provider"`
 	Workflow   string   `json:"workflow" form:"workflow"`
+	Target     string   `json:"target,omitempty" form:"target,omitempty"`
 	Reason     string   `json:"reason" form:"reason" binding:"required"`
 	Duration   string   `json:"duration,omitempty" form:"duration,omitempty"`     // Duration in ISO 8601 format
 	Identities []string `json:"identities,omitempty" form:"identities,omitempty"` // Optional identities to elevate, if empty the requesting user is used
@@ -33,6 +34,7 @@ func (r *ElevateStaticRequest) GetUrlParams() url.Values {
 		"workflow":   {r.Workflow},
 		"duration":   {r.Duration},
 		"provider":   {r.Provider},
+		"target":     {r.Target},
 		"identities": {strings.Join(r.Identities, ",")},
 		"tenants":    {strings.Join(r.Tenants, ",")},
 		"session":    {r.GetEncodedSession()}, // TODO provide the current auth session
@@ -56,15 +58,16 @@ type ElevateResponse struct {
 }
 
 type ElevateRequest struct {
-	Role          *Role         `json:"role"`
-	Providers     []string      `json:"providers"`     // A role can be applied to multiple providers
-	Authenticator string        `json:"authenticator"` // Which provider to use for authentication
-	Workflow      string        `json:"workflow"`
-	Reason        string        `json:"reason"`
-	Duration      string        `json:"duration,omitempty"`   // Duration in ISO 8601 format
-	Identities    []string      `json:"identities,omitempty"` // Optional identities to elevate, if empty the requesting user is used
-	Tenants       []string      `json:"tenants,omitempty"`    // Optional tenant IDs for multi-account providers
-	Session       *LocalSession `json:"session,omitempty"`
+	Role          *Role          `json:"role"`
+	Providers     []string       `json:"providers"`     // A role can be applied to multiple providers
+	Authenticator string         `json:"authenticator"` // Which provider to use for authentication
+	Workflow      string         `json:"workflow"`
+	Reason        string         `json:"reason"`
+	Duration      string         `json:"duration,omitempty"`   // Duration in ISO 8601 format
+	Identities    []string       `json:"identities,omitempty"` // Optional identities to elevate, if empty the requesting user is used
+	Tenants       []string       `json:"tenants,omitempty"`    // Optional tenant IDs for multi-account providers
+	Metadata      map[string]any `json:"metadata,omitempty"`   // Provider-specific request metadata
+	Session       *LocalSession  `json:"session,omitempty"`
 }
 
 func (e *ElevateRequest) IsValid() bool {
@@ -85,6 +88,7 @@ func (e *ElevateRequest) AsMap() map[string]any {
 		"duration":      e.Duration,
 		"identities":    e.Identities,
 		"tenants":       e.Tenants,
+		"metadata":      e.Metadata,
 	}
 }
 

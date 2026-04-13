@@ -355,6 +355,9 @@ func (e *localClient) ReloadPublicKeyInfrastructure() error {
 }
 
 func (e *localClient) ReloadTemporal() error {
+	if binder, ok := e.config.(interface{ ResetTemporalProviderBindings() }); ok {
+		binder.ResetTemporalProviderBindings()
+	}
 
 	if e.temporal != nil {
 

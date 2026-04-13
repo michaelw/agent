@@ -285,11 +285,13 @@ func CreateProviderSynchronizeWorkflow(provider Provider) func(workflow.Context,
 }
 
 type WorkflowRoleRequest struct {
-	WorkflowID string         `json:"workflow_id"`      // ID of the workflow for which the role is being authorized
-	Tenant     string         `json:"tenant,omitempty"` // Optional tenant ID for multi-account providers
-	Identity   string         `json:"identity"`         // User or group identifier
-	Role       *Role          `json:"role"`
-	Duration   *time.Duration `json:"duration,omitempty"` // Optional duration for temporary access
+	WorkflowID       string         `json:"workflow_id"`                 // ID of the workflow for which the role is being authorized
+	Tenant           string         `json:"tenant,omitempty"`            // Optional tenant ID for multi-account providers
+	Identity         string         `json:"identity"`                    // User or group identifier
+	ResolvedIdentity *Identity      `json:"resolved_identity,omitempty"` // Snapshot of the resolved identity from the request-originating workflow
+	Role             *Role          `json:"role"`
+	Duration         *time.Duration `json:"duration,omitempty"` // Optional duration for temporary access
+	Metadata         map[string]any `json:"metadata,omitempty"` // Provider-specific request metadata
 }
 
 // IsValid checks if any of the fields are nil
@@ -434,13 +436,19 @@ func CreateAuthorizeRoleRequest(
 ) (*AuthorizeRoleRequest, error) {
 
 	// Get the user identity from the request
-	identity, err := cfg.GetIdentity(req.Identity)
-	if err != nil {
-		identity = &Identity{
-			ID: req.Identity,
-			User: &User{
-				Email: req.Identity,
-			},
+	var identity *Identity
+	var err error
+	if req.ResolvedIdentity != nil {
+		identity = req.ResolvedIdentity
+	} else {
+		identity, err = cfg.GetIdentity(req.Identity)
+		if err != nil {
+			identity = &Identity{
+				ID: req.Identity,
+				User: &User{
+					Email: req.Identity,
+				},
+			}
 		}
 	}
 
@@ -481,6 +489,7 @@ func CreateAuthorizeRoleRequest(
 		Tenant:   tenant,
 		Role:     compositeRole,
 		Duration: req.Duration,
+		Metadata: req.Metadata,
 	}, nil
 }
 

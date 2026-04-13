@@ -144,6 +144,18 @@
                         </template>
                     </select>
 
+                    <div x-show="isLocalSudoSelected()">
+                        <input name="target"
+                               type="text"
+                               x-model="target"
+                               :required="isLocalSudoSelected()"
+                               placeholder="Target agent/task queue (for example thand_local_mbp05)"
+                               class="form-input">
+                        <div class="choice-help">
+                            Required for local sudo requests. Use the same target string accepted by <code>thand request sudo --target</code>.
+                        </div>
+                    </div>
+
                     <!-- Reason Textarea -->
                     <textarea name="reason" 
                               x-model="reason" 
@@ -323,6 +335,7 @@
         let PREFILLED_PROVIDERS = [];
         let PREFILLED_TENANTS = [];
         let PREFILLED_ROLES = [];
+        let PREFILLED_TARGET = '';
         let PREFILLED_DURATION = '';
         let PREFILLED_REASON = '';
         
@@ -358,6 +371,7 @@
             PREFILLED_ROLES = [];
         }
         
+        PREFILLED_TARGET = '{{.Target}}' || '';
         PREFILLED_DURATION = '{{.Duration}}' || '';
         PREFILLED_REASON = '{{.Reason}}' || '';
         
@@ -630,6 +644,16 @@
                     alert('Please select at least one identity to assign the role to');
                     return false;
                 }
+
+                const elevateFormElement = document.querySelector('[x-data*="elevateForm"]');
+                if (elevateFormElement && Alpine) {
+                    const alpineComponent = Alpine.$data(elevateFormElement);
+                    if (alpineComponent?.isLocalSudoSelected() && !alpineComponent.target?.trim()) {
+                        event.preventDefault();
+                        alert('Please specify a target agent for local sudo requests');
+                        return false;
+                    }
+                }
             });
         }
 
@@ -654,6 +678,7 @@
                 loading: false,
                 loadingRoles: false,
                 loadingTenants: false,
+                target: '',
                 
                 // Configuration
                 apiBasePath: API_BASE_PATH,
@@ -709,6 +734,10 @@
                     if (this.selectedRole) {
                         this.evaluateRole();
                     }
+                },
+
+                isLocalSudoSelected() {
+                    return this.selectedRole === 'local_sudo';
                 },
 
                 /**
@@ -814,6 +843,7 @@
                     this.prefilledProviders = PREFILLED_PROVIDERS;
                     this.prefilledTenants = PREFILLED_TENANTS;
                     this.prefilledRoles = PREFILLED_ROLES;
+                    this.target = PREFILLED_TARGET || '';
                     
                     if (PREFILLED_REASON) {
                         this.reason = PREFILLED_REASON;
@@ -1174,6 +1204,10 @@
                     // Add duration
                     if (this.duration) {
                         params.set('duration', this.duration);
+                    }
+
+                    if (this.isLocalSudoSelected() && this.target) {
+                        params.set('target', this.target);
                     }
                     
                     // Add reason

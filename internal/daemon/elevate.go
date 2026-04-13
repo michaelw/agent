@@ -74,8 +74,13 @@ func (s *Server) getElevate(c *gin.Context) {
 		Workflow:   primaryWorkflow,
 		Reason:     request.Reason,
 		Duration:   request.Duration,
-		Session:    request.Session,
-		Tenants:    request.Tenants,
+		Metadata: models.LocalSudoRequestMetadata{
+			Mode:                models.LocalSudoModeTimed,
+			TargetAgent:         strings.TrimSpace(request.Target),
+			TargetAgentExplicit: len(strings.TrimSpace(request.Target)) > 0,
+		}.AsMap(),
+		Session: request.Session,
+		Tenants: request.Tenants,
 	})
 }
 
@@ -671,6 +676,7 @@ type ElevateStaticPageData struct {
 	Identities []models.Identity `json:"identities"`
 	Providers  []string          `json:"providers"`
 	Roles      []string          `json:"roles"`
+	Target     string            `json:"target"`
 	Duration   string            `json:"duration"`
 	Reason     string            `json:"reason"`
 	Tenants    []string          `json:"tenants"`
@@ -733,6 +739,11 @@ func (s *Server) getElevationPagePrefill(c *gin.Context) ElevateStaticPageData {
 	duration := c.Query("duration")
 	if len(duration) > 0 {
 		data.Duration = duration
+	}
+
+	target := strings.TrimSpace(c.Query("target"))
+	if len(target) > 0 {
+		data.Target = target
 	}
 
 	// Get reason from query parameters

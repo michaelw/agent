@@ -337,6 +337,96 @@ thand request access \
   --tenant project-beta
 ```
 
+### `request sudo`
+
+Request local sudo access or broker a privileged command through the local provider.
+
+```bash
+thand request sudo --duration <duration> --reason <reason>
+thand request sudo --reason <reason> -- <command> [args...]
+```
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--duration` | `-d` | Required for timed local sudo access |
+| `--reason` | `-e` | Justification for the sudo request |
+
+**Examples:**
+```bash
+# Request timed sudo access on macOS or Linux
+thand request sudo \
+  --duration 30m \
+  --reason "System maintenance"
+
+# Broker a single privileged command
+thand request sudo \
+  --reason "Inspect listening ports" \
+  -- netstat -ab
+```
+
+**Local Username Resolution:**
+- For Unix targets, the `local-elevation` provider chooses the local account in this order:
+  1. `providers.local-elevation.config.username`
+  2. `req.Identity.User.Username`, but only when at least one provider ID in
+     `Identity.Providers` is allowlisted in `trusted_username_sources`
+- If `trusted_username_sources` is unset or empty, identity-username fallback is disabled.
+- If trust or account validation fails, the request fails closed and no sudoers fragment is written.
+
+**Configuration Examples:**
+```yaml
+# Pin local sudo to a specific host account
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      username: localadmin
+```
+
+```yaml
+# Allow identity username fallback only for a trusted provider instance
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      trusted_username_sources:
+        - oauth2-jumpcloud
+```
+
+```yaml
+# Add explicit safety policy
+providers:
+  local-elevation:
+    provider: local
+    enabled: true
+    config:
+      trusted_username_sources:
+        - oauth2-jumpcloud
+      denied_usernames:
+        - root
+        - daemon
+        - nobody
+      allowed_uid_ranges:
+        - "1000-60000"
+```
+
+**Operator Notes:**
+- `trusted_username_sources` matches provider IDs, not provider types. For an
+  identity like `{"oauth2-jumpcloud":"oauth2"}`, the trusted value is
+  `oauth2-jumpcloud`.
+- If `allowed_uid_ranges` is omitted, Unix agents try `/etc/login.defs` first
+  and use `UID_MIN` and `UID_MAX` when available.
+- The target local account must exist on the host, must not match a denied
+  username, and must fall within an allowed UID range.
+
+**Platform Notes:**
+- macOS and Linux support timed sudo access and brokered privileged commands.
+- Windows v1 supports brokered commands through Windows Sudo only.
+- Windows timed sudo requests are not supported in v1.
+
 ---
 
 ## Information Commands
