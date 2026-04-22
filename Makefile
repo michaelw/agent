@@ -9,6 +9,10 @@ BUILD_DIR=bin
 UPX_FLAGS ?= --best --lzma --force-macos
 
 GO_BUILD_FLAGS= -ldflags "-s -w"
+HOST_OS := $(shell uname -s)
+PRIVILEGE_SERVICES_FILES := $(shell find platform/macos/PrivilegeServices -type f ! -path '*/ThandPrivilegeServices.xcodeproj/*' 2>/dev/null)
+PRIVILEGE_SERVICES_BUILD_STAMP := .build/macos/PrivilegeServices/.build-stamp
+PRIVILEGE_SERVICES_TEST_STAMP := .build/macos/PrivilegeServices/.test-stamp
 
 # Default target - builds the application
 all: build
@@ -24,6 +28,12 @@ update-submodules:
 # Build the application
 build: submodules
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
+ifeq ($(HOST_OS),Darwin)
+	./scripts/sign-macos-local-agent.sh $(BUILD_DIR)/$(BINARY_NAME)
+endif
+ifeq ($(HOST_OS),Darwin)
+build: build-macos-privilege-services
+endif
 
 # Build for multiple platforms
 build-all: submodules
@@ -36,9 +46,41 @@ build-all: submodules
 build-linux-amd64: submodules
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOEXPERIMENT=jsonv2 go build $(GO_BUILD_FLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 .
 
+# Build the macOS native privilege services app, login item, daemon, and brokerctl.
+build-macos-privilege-services: $(PRIVILEGE_SERVICES_BUILD_STAMP)
+
+$(PRIVILEGE_SERVICES_BUILD_STAMP): $(PRIVILEGE_SERVICES_FILES) scripts/build-macos-privilege-services.sh scripts/macos-privilege-services-common.sh
+	./scripts/build-macos-privilege-services.sh
+	@mkdir -p $(dir $@)
+	@touch $@
+
+# Run the macOS native privilege services test suite.
+test-macos-privilege-services: $(PRIVILEGE_SERVICES_TEST_STAMP)
+
+$(PRIVILEGE_SERVICES_TEST_STAMP): $(PRIVILEGE_SERVICES_FILES) scripts/test-macos-privilege-services.sh scripts/macos-privilege-services-common.sh
+	./scripts/test-macos-privilege-services.sh
+	@mkdir -p $(dir $@)
+	@touch $@
+
+# Package a development payload for local Apple Development-signed integration testing.
+package-macos-privilege-services-dev:
+	./scripts/package-macos-privilege-services-dev.sh
+
+# Install the packaged development payload for local end-to-end testing.
+install-macos-privilege-services-dev:
+	./scripts/install-macos-privilege-services-dev.sh
+
+# Remove the installed development payload from a local machine.
+uninstall-macos-privilege-services-dev:
+	./scripts/uninstall-macos-privilege-services-dev.sh
+
+# Produce the signed macOS release installer when Developer ID material is available.
+package-macos-privilege-services-release:
+	./scripts/package-macos-privilege-services-release.sh
+
 # Clean build artifacts
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) .build/macos platform/macos/PrivilegeServices/ThandPrivilegeServices.xcodeproj
 
 # Manually compress any binaries in $(BUILD_DIR) using UPX
 compress:
@@ -60,6 +102,9 @@ run: submodules
 # Run tests
 test: submodules
 	go test ./...
+ifeq ($(HOST_OS),Darwin)
+test: test-macos-privilege-services
+endif
 
 # Run functional tests
 test-functional: submodules
@@ -96,4 +141,4 @@ swagger:
 		exit 1; \
 	fi
 
-.PHONY: all build build-all build-linux-amd64 clean install run test test-functional test-integration test-e2e submodules update-submodules compress generate-data swagger
+.PHONY: all build build-all build-linux-amd64 build-macos-privilege-services test-macos-privilege-services package-macos-privilege-services-dev install-macos-privilege-services-dev uninstall-macos-privilege-services-dev package-macos-privilege-services-release clean install run test test-functional test-integration test-e2e submodules update-submodules compress generate-data swagger
