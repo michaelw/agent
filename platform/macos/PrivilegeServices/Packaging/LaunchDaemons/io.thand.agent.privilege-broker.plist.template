@@ -8,6 +8,8 @@
   <dict>
     <key>__SERVICE_LABEL__</key>
     <true/>
+    <key>__SERVICE_LABEL__.notifier</key>
+    <true/>
   </dict>
   <key>BundleProgram</key>
   <string>Contents/Resources/ThandPrivilegeBrokerDaemon</string>

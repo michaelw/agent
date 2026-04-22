@@ -19,6 +19,10 @@ public struct BrokerConfig: Sendable, Equatable {
     public let notifierPeerRequirement: String
     public let brokerPeerRequirement: String
 
+    public var notifierServiceLabel: String {
+        "\(serviceLabel).notifier"
+    }
+
     public init(
         stateDirectoryURL: URL = URL(fileURLWithPath: Self.defaultStateDirectory),
         sudoersDirectoryURL: URL = URL(fileURLWithPath: Self.defaultSudoersDirectory),
