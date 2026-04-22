@@ -35,6 +35,10 @@ type Device struct {
 	Description string `json:"description,omitempty" yaml:"description,omitempty" mapstructure:"description"`
 	Platform    string `json:"platform,omitempty" yaml:"platform,omitempty" mapstructure:"platform"`
 	Enabled     bool   `json:"enabled" yaml:"enabled" mapstructure:"enabled"`
+
+	// LocalElevation is device-local policy layered on top of the generic
+	// device substrate. The policy itself lives in device_local_elevation.go.
+	LocalElevation *DeviceLocalElevationPolicy `json:"local_elevation,omitempty" yaml:"local_elevation,omitempty" mapstructure:"local_elevation"`
 }
 
 type DeviceConnectionState struct {
