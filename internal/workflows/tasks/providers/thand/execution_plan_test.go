@@ -11,10 +11,10 @@ import (
 	"github.com/thand-io/agent/internal/common"
 	"github.com/thand-io/agent/internal/config"
 	"github.com/thand-io/agent/internal/models"
+	"github.com/thand-io/agent/internal/testing/temporaltest"
 	sdkWorkflowsModel "github.com/thand-io/agent/sdk/workflows/models"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -203,12 +203,14 @@ func TestBuildExecutionPlanLocalSudoUsesPerEntryGrantIDsAndDeviceMetadata(t *tes
 }
 
 func TestEnsureExecutionPlanTemporalBuildsOnceAndCachesPlan(t *testing.T) {
+	// TestWorkflowEnvironment does not thread WorkerOptions.BuildID through the
+	// lazy activity-worker path, so seed the SDK's process-wide checksum cache
+	// before the first ExecuteActivity to keep binary hashing out of the
+	// workflow deadlock-detector critical path.
+	temporaltest.SeedBinaryChecksum()
+
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
-	// Set a stable test-only build ID so the Temporal test worker does not hash
-	// the entire test binary to derive one. That checksum path is surprisingly
-	// expensive for this package and can dominate the runtime of this test.
-	env.SetWorkerOptions(worker.Options{BuildID: "test-build-id"})
 
 	request := models.ElevateRequestInternal{
 		ElevateRequest: models.ElevateRequest{

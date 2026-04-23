@@ -10,18 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thand-io/agent/internal/models"
+	"github.com/thand-io/agent/internal/testing/temporaltest"
 	sdkWorkflowsModel "github.com/thand-io/agent/sdk/workflows/models"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
 
 func newDeviceRoutingTestEnv() *testsuite.TestWorkflowEnvironment {
+	temporaltest.SeedBinaryChecksum()
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
-	env.SetWorkerOptions(worker.Options{BuildID: "test-build-id"})
 	return env
 }
 

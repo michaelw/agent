@@ -14,6 +14,7 @@ import (
 
 	"github.com/thand-io/agent/internal/localbroker"
 	"github.com/thand-io/agent/internal/models"
+	"github.com/thand-io/agent/internal/testing/temporaltest"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
@@ -1048,6 +1049,7 @@ func newAuthorizeRoleRequest(metadata models.LocalSudoRequestMetadata) *models.A
 }
 
 func newLocalProviderWorkflowEnvironment(provider *localProvider) *testsuite.TestWorkflowEnvironment {
+	temporaltest.SeedBinaryChecksum()
 	suite := &testsuite.WorkflowTestSuite{}
 	env := suite.NewTestWorkflowEnvironment()
 	activities := &localProviderActivities{provider: provider}
