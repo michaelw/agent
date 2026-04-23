@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/thand-io/agent/internal/common"
 	"github.com/thand-io/agent/internal/models"
 )
 
@@ -17,6 +18,9 @@ var sudoCmd = &cobra.Command{
 		reason, _ := cmd.Flags().GetString("reason")
 		duration, _ := cmd.Flags().GetString("duration")
 		device, _ := cmd.Flags().GetString("device")
+		if !cmd.Flags().Changed("device") {
+			device = common.GetDeviceID().String()
+		}
 		request, err := buildLocalSudoElevationRequest(args, reason, duration, device)
 		if err != nil {
 			return err
@@ -74,5 +78,5 @@ func init() {
 
 	sudoCmd.Flags().StringP("duration", "d", "", "Duration of timed sudo access (for example 30m or 1h)")
 	sudoCmd.Flags().StringP("reason", "e", "", "Reason for the sudo request")
-	sudoCmd.Flags().String("device", "", "Canonical device_id for local sudo execution")
+	sudoCmd.Flags().String("device", "", "Canonical device_id for local sudo execution (defaults to the current device when omitted)")
 }

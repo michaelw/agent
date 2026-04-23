@@ -31,6 +31,9 @@ CLI example:
 thand request sudo --device 11111111-2222-3333-4444-555555555555 --duration 30m --reason "System maintenance"
 ```
 
+If `--device` is omitted, the CLI defaults to the current machine's canonical `device_id`.
+If `--device` is provided explicitly, the CLI uses that exact value, even if it is empty.
+
 Static web example:
 
 ```text

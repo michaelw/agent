@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/thand-io/agent/internal/common"
 	configpkg "github.com/thand-io/agent/internal/config"
 	"github.com/thand-io/agent/internal/models"
 )
@@ -184,5 +186,63 @@ func TestBuildLocalSudoElevationRequestRequiresConfiguredEnvironment(t *testing.
 
 	if _, err := buildLocalSudoElevationRequest(nil, "system maintenance", "30m", ""); err == nil {
 		t.Fatal("expected error when config is unavailable")
+	}
+}
+
+func TestSudoCommandDefaultsDeviceToCurrentMachineWhenFlagOmitted(t *testing.T) {
+	previousCfg := cfg
+	t.Cleanup(func() { cfg = previousCfg })
+
+	cfg = newTestSudoConfig("local-elevation")
+
+	cmd := &cobra.Command{Use: "sudo"}
+	cmd.Flags().String("device", "", "")
+
+	device, err := cmd.Flags().GetString("device")
+	if err != nil {
+		t.Fatalf("GetString(device) returned error: %v", err)
+	}
+	if cmd.Flags().Changed("device") {
+		t.Fatal("device flag should not be marked changed when omitted")
+	}
+	if !cmd.Flags().Changed("device") {
+		device = common.GetDeviceID().String()
+	}
+
+	request, err := buildLocalSudoElevationRequest(nil, "system maintenance", "30m", device)
+	if err != nil {
+		t.Fatalf("buildLocalSudoElevationRequest returned error: %v", err)
+	}
+
+	if got, want := request.Device, common.GetDeviceID().String(); got != want {
+		t.Fatalf("device = %q, want %q", got, want)
+	}
+	if got, want := request.Metadata["device_id"], common.GetDeviceID().String(); got != want {
+		t.Fatalf("metadata device_id = %#v, want %q", got, want)
+	}
+}
+
+func TestSudoCommandPreservesExplicitEmptyDeviceFlag(t *testing.T) {
+	previousCfg := cfg
+	t.Cleanup(func() { cfg = previousCfg })
+
+	cfg = newTestSudoConfig("local-elevation")
+
+	cmd := &cobra.Command{Use: "sudo"}
+	cmd.Flags().String("device", "", "")
+	if err := cmd.Flags().Set("device", ""); err != nil {
+		t.Fatalf("Set(device) returned error: %v", err)
+	}
+
+	device, err := cmd.Flags().GetString("device")
+	if err != nil {
+		t.Fatalf("GetString(device) returned error: %v", err)
+	}
+	if !cmd.Flags().Changed("device") {
+		t.Fatal("device flag should be marked changed when explicitly set")
+	}
+
+	if _, err := buildLocalSudoElevationRequest(nil, "system maintenance", "30m", device); err == nil {
+		t.Fatal("expected explicit empty device flag to remain empty and fail validation")
 	}
 }

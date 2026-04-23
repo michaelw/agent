@@ -156,6 +156,7 @@ devices:
 - local-sudo execution planning reads device policy from the shared Temporal device-definition registry
 - the device identity is the canonical `device_id`
 - operators can print the local machine device ID with `thand config device-id`
+- `thand request sudo` defaults to the current machine when `--device` is omitted
 - static `execution_target` routing is no longer used
 - local-sudo execution planning runs internally at the start of `authorize`
 - authorize waits for the device for a bounded window
