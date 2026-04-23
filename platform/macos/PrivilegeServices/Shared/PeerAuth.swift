@@ -50,6 +50,7 @@ public struct PeerRequirementPolicy: Sendable, Equatable {
         }
     }
 
+    @available(macOS 26.0, *)
     public func sessionRequirement(for role: PeerRole) -> XPCPeerRequirement? {
         guard let signingIdentifier = signingIdentifier(for: role) else {
             return nil
@@ -57,6 +58,7 @@ public struct PeerRequirementPolicy: Sendable, Equatable {
         return .isFromSameTeam(andMatchesSigningIdentifier: signingIdentifier)
     }
 
+    @available(macOS 26.0, *)
     public func senderSatisfies(_ message: XPCReceivedMessage, role: PeerRole) -> Bool {
         guard !insecureDevMode else {
             return true
@@ -148,6 +150,7 @@ public struct PeerRequirementPolicy: Sendable, Equatable {
         }
     }
 
+    @available(macOS 26.0, *)
     private func relaxedSameTeamRequirement() -> XPCPeerRequirement? {
         do {
             let requirement = try ProcessCodeRequirement.allOf {
