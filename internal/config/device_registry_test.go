@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thand-io/agent/internal/models"
+	enumspb "go.temporal.io/api/enums/v1"
 	taskqueuepb "go.temporal.io/api/taskqueue/v1"
 	workflowpb "go.temporal.io/api/workflow/v1"
 	workflowservice "go.temporal.io/api/workflowservice/v1"
@@ -69,19 +70,49 @@ func TestEnsureRegistryWorkflowTaskQueueTerminatesWrongQueue(t *testing.T) {
 	assert.Equal(t, []string{models.TemporalDeviceRouteRegistryWorkflowID}, client.terminated)
 }
 
+func TestEnsureRegistryWorkflowTaskQueueTerminatesVersionedRegistryWorkflow(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeDeviceRegistryClient{
+		describeResponse: &workflowservice.DescribeWorkflowExecutionResponse{
+			ExecutionConfig: &workflowpb.WorkflowExecutionConfig{
+				TaskQueue: &taskqueuepb.TaskQueue{Name: models.TemporalDeviceRegistryTaskQueue},
+			},
+			WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+				VersioningInfo: &workflowpb.WorkflowExecutionVersioningInfo{
+					Behavior: enumspb.VERSIONING_BEHAVIOR_AUTO_UPGRADE,
+				},
+			},
+		},
+	}
+
+	err := ensureRegistryWorkflowTaskQueue(context.Background(), client, models.TemporalDeviceDefinitionRegistryWorkflowID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{models.TemporalDeviceDefinitionRegistryWorkflowID}, client.terminated)
+}
+
 func TestPublishDeviceDefinitionUsesCanonicalRegistryQueue(t *testing.T) {
 	t.Parallel()
 
-	client := &fakeDeviceRegistryClient{}
-	err := publishDeviceDefinition(context.Background(), client, models.Device{
+	fakeClient := &fakeDeviceRegistryClient{}
+	err := publishDeviceDefinition(context.Background(), fakeClient, models.Device{
 		ID:      "device-alpha",
 		Name:    "Device Alpha",
 		Enabled: true,
 	})
 	require.NoError(t, err)
-	require.Len(t, client.signalOptions, 1)
-	assert.Equal(t, models.TemporalDeviceRegistryTaskQueue, client.signalOptions[0].TaskQueue)
-	assert.Equal(t, models.TemporalDeviceDefinitionUpsertSignalName, client.signalNames[0])
+	require.Len(t, fakeClient.signalOptions, 1)
+	assert.Equal(t, models.TemporalDeviceRegistryTaskQueue, fakeClient.signalOptions[0].TaskQueue)
+	assert.Equal(t, models.TemporalDeviceDefinitionUpsertSignalName, fakeClient.signalNames[0])
+	assert.Nil(t, fakeClient.signalOptions[0].VersioningOverride)
+}
+
+func TestDeviceRegistryStartWorkflowOptionsOmitsVersioningOverride(t *testing.T) {
+	t.Parallel()
+
+	opts := deviceRegistryStartWorkflowOptions(models.TemporalDeviceDefinitionRegistryWorkflowID)
+	assert.Equal(t, models.TemporalDeviceRegistryTaskQueue, opts.TaskQueue)
+	assert.Nil(t, opts.VersioningOverride)
 }
 
 func TestQueryDeviceDefinitionReturnsStoredDevice(t *testing.T) {

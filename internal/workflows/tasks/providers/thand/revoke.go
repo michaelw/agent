@@ -293,6 +293,7 @@ func (t *thandTask) runRevokeTask(
 				WorkflowExecutionTimeout: deviceRouteRevokeAttemptLimit,
 				WorkflowRunTimeout:       deviceRouteRevokeAttemptLimit,
 			}
+			childOpts = childWorkflowOptionsForTaskQueue(workflowTask.GetTaskQueue(), taskQueue, childOpts)
 			childCtx := workflow.WithChildOptions(ctx, childOpts)
 
 			req := models.WorkflowRevokeRoleRequest{

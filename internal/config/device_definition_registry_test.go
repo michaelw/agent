@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,33 @@ import (
 	"github.com/thand-io/agent/internal/models"
 	"go.temporal.io/sdk/testsuite"
 )
+
+func queryDeviceDefinitionEventually(
+	t *testing.T,
+	env *testsuite.TestWorkflowEnvironment,
+	deviceID string,
+	assertDevice func(models.Device),
+) {
+	t.Helper()
+
+	var poll func()
+	poll = func() {
+		value, err := env.QueryWorkflow(models.TemporalGetDeviceDefinitionQueryName, deviceID)
+		if err != nil && strings.Contains(err.Error(), "unknown queryType") {
+			env.RegisterDelayedCallback(poll, time.Millisecond)
+			return
+		}
+		require.NoError(t, err)
+
+		var device models.Device
+		require.NoError(t, value.Get(&device))
+		assertDevice(device)
+
+		env.CancelWorkflow()
+	}
+
+	env.RegisterDelayedCallback(poll, time.Millisecond)
+}
 
 func TestDeviceDefinitionRegistryWorkflowReturnsConfiguredDevice(t *testing.T) {
 	t.Parallel()
@@ -24,17 +52,10 @@ func TestDeviceDefinitionRegistryWorkflowReturnsConfiguredDevice(t *testing.T) {
 		})
 	}, 0)
 
-	env.RegisterDelayedCallback(func() {
-		value, err := env.QueryWorkflow(models.TemporalGetDeviceDefinitionQueryName, "device-alpha")
-		require.NoError(t, err)
-
-		var device models.Device
-		require.NoError(t, value.Get(&device))
+	queryDeviceDefinitionEventually(t, env, "device-alpha", func(device models.Device) {
 		assert.Equal(t, "device-alpha", device.ID)
 		assert.Equal(t, "Device Alpha", device.Name)
-
-		env.CancelWorkflow()
-	}, time.Millisecond)
+	})
 
 	env.ExecuteWorkflow(deviceDefinitionRegistryWorkflow)
 	require.True(t, env.IsWorkflowCompleted())
@@ -60,16 +81,9 @@ func TestDeviceDefinitionRegistryWorkflowRejectsConflictingUpdates(t *testing.T)
 		})
 	}, 0)
 
-	env.RegisterDelayedCallback(func() {
-		value, err := env.QueryWorkflow(models.TemporalGetDeviceDefinitionQueryName, "device-alpha")
-		require.NoError(t, err)
-
-		var device models.Device
-		require.NoError(t, value.Get(&device))
+	queryDeviceDefinitionEventually(t, env, "device-alpha", func(device models.Device) {
 		assert.Equal(t, "Device Alpha", device.Name)
-
-		env.CancelWorkflow()
-	}, time.Millisecond)
+	})
 
 	env.ExecuteWorkflow(deviceDefinitionRegistryWorkflow)
 	require.True(t, env.IsWorkflowCompleted())

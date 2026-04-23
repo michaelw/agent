@@ -339,6 +339,7 @@ func (t *thandTask) runAuthTask(
 			childOpts.WorkflowExecutionTimeout = childTimeout
 			childOpts.WorkflowRunTimeout = childTimeout
 		}
+		childOpts = childWorkflowOptionsForTaskQueue(workflowTask.GetTaskQueue(), taskQueue, childOpts)
 		ctx = workflow.WithChildOptions(ctx, childOpts)
 
 		req := models.CloneAuthorizeRoleRequest(task.AuthorizeRequest)

@@ -35,12 +35,39 @@ type deviceRegistryTemporalClient interface {
 }
 
 func deviceRegistryStartWorkflowOptions(workflowID string) client.StartWorkflowOptions {
-	// These internal singleton workflows always run on the server-owned device
-	// registry queue, so do not pin them to the caller's build ID.
+	// These internal singleton workflows always run on the shared
+	// device-registry queue, which is intentionally unversioned even when the
+	// operational server/agent queues use worker deployments.
 	return client.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: models.TemporalDeviceRegistryTaskQueue,
 	}
+}
+
+func registryWorkflowUsesVersioning(description *workflowservice.DescribeWorkflowExecutionResponse) bool {
+	if description == nil {
+		return false
+	}
+
+	info := description.GetWorkflowExecutionInfo()
+	if info == nil {
+		return false
+	}
+
+	if strings.TrimSpace(info.GetAssignedBuildId()) != "" || strings.TrimSpace(info.GetInheritedBuildId()) != "" {
+		return true
+	}
+
+	versioningInfo := info.GetVersioningInfo()
+	if versioningInfo == nil {
+		return false
+	}
+
+	if versioningInfo.GetBehavior() != enums.VERSIONING_BEHAVIOR_UNSPECIFIED {
+		return true
+	}
+
+	return versioningInfo.GetVersioningOverride() != nil
 }
 
 func normalizeDeviceDefinition(device models.Device) models.Device {
@@ -142,7 +169,16 @@ func ensureRegistryWorkflowTaskQueue(
 		taskQueue = strings.TrimSpace(description.ExecutionConfig.TaskQueue.Name)
 	}
 	if taskQueue == "" || taskQueue == models.TemporalDeviceRegistryTaskQueue {
-		return nil
+		if !registryWorkflowUsesVersioning(description) {
+			return nil
+		}
+
+		logrus.WithFields(logrus.Fields{
+			"workflow_id": workflowID,
+			"task_queue":  models.TemporalDeviceRegistryTaskQueue,
+		}).Warn("Recreating versioned device registry workflow on the canonical unversioned device registry queue")
+
+		return temporalClient.TerminateWorkflow(ctx, workflowID, "", "migrating device registry workflow to canonical unversioned queue")
 	}
 
 	logrus.WithFields(logrus.Fields{
