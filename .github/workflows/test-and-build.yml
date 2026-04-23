@@ -177,6 +177,11 @@ jobs:
         brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
         xcodegen version
 
+    - name: Install buf
+      run: |
+        brew list buf >/dev/null 2>&1 || brew install buf
+        buf --version
+
     - name: Cache macOS DerivedData
       uses: actions/cache@v4
       with:

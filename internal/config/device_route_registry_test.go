@@ -22,7 +22,7 @@ func TestDeviceRouteRegistryWorkflowReturnsFreshRouteByDeviceID(t *testing.T) {
 			Hostname:  "host-one",
 			Platform:  "local",
 		})
-	}, 0)
+	}, time.Second)
 
 	env.RegisterDelayedCallback(func() {
 		value, err := env.QueryWorkflow(models.TemporalGetDeviceRouteQueryName, "device-alpha")
@@ -34,7 +34,7 @@ func TestDeviceRouteRegistryWorkflowReturnsFreshRouteByDeviceID(t *testing.T) {
 		assert.Equal(t, "host-one", route.Hostname)
 
 		env.CancelWorkflow()
-	}, time.Millisecond)
+	}, 2*time.Second)
 
 	env.ExecuteWorkflow(deviceRouteRegistryWorkflow)
 	require.True(t, env.IsWorkflowCompleted())
@@ -56,7 +56,7 @@ func TestDeviceRouteRegistryWorkflowUsesHostnameAsMetadataOnly(t *testing.T) {
 			TaskQueue: "thand-local-alpha",
 			Hostname:  "host-two",
 		})
-	}, 0)
+	}, time.Second)
 
 	env.RegisterDelayedCallback(func() {
 		value, err := env.QueryWorkflow(models.TemporalGetDeviceRouteQueryName, "device-alpha")
@@ -68,7 +68,7 @@ func TestDeviceRouteRegistryWorkflowUsesHostnameAsMetadataOnly(t *testing.T) {
 		assert.Equal(t, "host-two", route.Hostname)
 
 		env.CancelWorkflow()
-	}, time.Millisecond)
+	}, 2*time.Second)
 
 	env.ExecuteWorkflow(deviceRouteRegistryWorkflow)
 	require.True(t, env.IsWorkflowCompleted())
